@@ -128,12 +128,12 @@ export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSel
             </div>
           </section>
         )}
-        <form onSubmit={(event) => { event.preventDefault(); handleSendMessage(); }} className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-          <button type="button" aria-label={isOpen ? "Close chat" : "Open chat"} aria-expanded={isOpen} onClick={() => setIsOpen((open) => !open)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-civic-indigo hover:bg-indigo-100">
+        <form onSubmit={(event) => { event.preventDefault(); handleSendMessage(); }} className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-indigo-300 bg-indigo-50 p-2 shadow-xl shadow-indigo-200/50">
+          <button type="button" aria-label={isOpen ? "Close chat" : "Open chat"} aria-expanded={isOpen} onClick={() => setIsOpen((open) => !open)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-civic-navy text-white hover:bg-slate-800">
             <Bot className="h-5 w-5" />
           </button>
-          <input id="chat-input" aria-label="Ask NyayaSetu a question" type="text" value={input} onFocus={() => setIsOpen(true)} onChange={(event) => setInput(event.target.value)} placeholder="Ask a question…" className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm outline-none placeholder:text-slate-400" />
-          <button type="submit" disabled={loading || !input.trim()} aria-label="Send question" className="flex h-11 shrink-0 items-center gap-2 rounded-xl bg-civic-indigo px-4 text-sm font-semibold text-white shadow-xs hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50">
+          <input id="chat-input" aria-label="Ask NyayaSetu a question" type="text" value={input} onFocus={() => setIsOpen(true)} onChange={(event) => setInput(event.target.value)} placeholder="Ask a question…" className="min-w-0 flex-1 rounded-full bg-white px-4 py-3 text-sm outline-none ring-1 ring-transparent placeholder:text-slate-400 focus:ring-civic-indigo" />
+          <button type="submit" disabled={loading || !input.trim()} aria-label="Send question" className="flex h-11 shrink-0 items-center gap-2 rounded-full bg-civic-indigo px-4 text-sm font-semibold text-white shadow-xs hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50">
             <Search className="h-4 w-4" /><span className="hidden sm:inline">Ask</span>
           </button>
         </form>
