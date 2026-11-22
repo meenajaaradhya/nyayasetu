@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, ExternalLink, FileText, Send, Sparkles, User } from "lucide-react";
+import { AlertTriangle, Bot, ExternalLink, FileText, Search, Sparkles, User, X } from "lucide-react";
 import { CIVIL_CATEGORIES } from "../data/civilData";
 import { PRACTICAL_GUIDES } from "../data/practicalGuides";
 import type { CivilCategory } from "../data/civilData";
@@ -47,18 +47,20 @@ export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSel
   const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "assistant", text: `Namaste! Describe what happened in ${selectedState}. I can help organize practical next steps, records to keep, and questions to ask. Avoid sharing identifying or financial details.` }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const handleSendMessage = useCallback(async (overrideText?: string) => {
     const textToSend = (overrideText ?? input).trim();
     if (!textToSend) return;
+    setIsOpen(true);
     setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", text: textToSend }]);
     if (!overrideText) setInput("");
     setLoading(true);
     const lower = textToSend.toLowerCase();
     if (lower.includes("murder") || lower.includes("assault") || lower.includes("knife") || lower.includes("robbery") || lower.includes("kidnap")) {
-      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: "⚠️ Urgent Criminal Matter Detected: This portal covers Civil Law only. Physical assault, robbery, or violent crime requires immediate police intervention. Please dial 112 (National Emergency) or file an FIR at your nearest police station immediately." }]);
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: "This sounds urgent and may involve immediate danger. Call 112 in India or contact local emergency services now. This app can’t handle emergencies." }]);
       setLoading(false); return;
     }
     const matched = classifyLocally(textToSend);
@@ -94,31 +96,48 @@ export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSel
   }, [input, onSelectCategory, selectedState]);
 
   return (
-    <div className="flex h-[min(70vh,620px)] min-h-[480px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5"><div className="p-1.5 bg-indigo-500 rounded-lg"><Bot className="w-5 h-5 text-white" /></div><div><h3 className="font-semibold text-sm leading-tight">NyayaSetu Practical Guide</h3><p className="text-xs text-slate-300">Options and next steps for {selectedState}</p></div></div>
-        <span className="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">Guidance</span>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-        {messages.map((m) => (
-          <div key={m.id} className={`flex gap-2.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            {m.role === "assistant" && <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5"><Bot className="w-4 h-4" /></div>}
-            <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-indigo-600 text-white rounded-br-none" : "bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs"}`}>
-              <div className="whitespace-pre-line">{m.text}</div>
-              {m.matchedCategory && <div className="mt-3 pt-2.5 border-t border-slate-100"><a href={PRACTICAL_GUIDES[m.matchedCategory.id].supportUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition">Open {PRACTICAL_GUIDES[m.matchedCategory.id].supportLabel} <ExternalLink className="w-3.5 h-3.5" /></a></div>}
-              {m.draftText && <details className="mt-2.5 bg-slate-900 text-slate-100 rounded-xl p-2.5 text-xs"><summary className="cursor-pointer font-medium text-indigo-300 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> View initial message template</summary><pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-slate-200 overflow-x-auto">{m.draftText}</pre></details>}
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50">
+      <div className="mx-auto max-w-6xl px-3 pb-3 sm:px-4">
+        {isOpen && (
+          <section aria-label="NyayaSetu chat" className="pointer-events-auto ml-auto mb-3 flex max-h-[65vh] max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-center justify-between bg-civic-navy px-4 py-3 text-white">
+              <div className="flex items-center gap-2.5">
+                <span className="rounded-lg bg-civic-indigo p-1.5"><Bot className="h-5 w-5" /></span>
+                <span><span className="block text-sm font-semibold">Ask NyayaSetu</span><span className="block text-xs text-slate-300">Practical next steps · {selectedState}</span></span>
+              </div>
+              <button type="button" aria-label="Close chat" onClick={() => setIsOpen(false)} className="rounded-lg p-2 hover:bg-white/10"><X className="h-4 w-4" /></button>
+            </header>
+            <div role="log" aria-live="polite" className="space-y-4 overflow-y-auto bg-civic-paper p-4">
+              {messages.map((m) => (
+                <div key={m.id} className={`flex gap-2.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  {m.role === "assistant" && <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-civic-indigo"><Bot className="h-4 w-4" /></div>}
+                  <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${m.role === "user" ? "rounded-br-none bg-civic-indigo text-white" : "rounded-bl-none border border-slate-200 bg-white text-slate-800 shadow-sm"}`}>
+                    <div className="whitespace-pre-line">{m.text}</div>
+                    {m.matchedCategory && <div className="mt-3 border-t border-slate-100 pt-2.5"><a href={PRACTICAL_GUIDES[m.matchedCategory.id].supportUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-civic-indigo hover:bg-indigo-100">{PRACTICAL_GUIDES[m.matchedCategory.id].supportLabel}<ExternalLink className="h-3.5 w-3.5" /></a></div>}
+                    {m.draftText && <details className="mt-2.5 rounded-xl bg-civic-navy p-2.5 text-xs text-slate-100"><summary className="flex cursor-pointer items-center gap-1.5 font-medium text-indigo-200"><FileText className="h-3.5 w-3.5" /> View message template</summary><pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-slate-200">{m.draftText}</pre></details>}
+                  </div>
+                  {m.role === "user" && <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-700"><User className="h-4 w-4" /></div>}
+                </div>
+              ))}
+              {loading && <div className="flex items-center gap-2 pl-9 text-xs text-slate-500"><Sparkles className="h-4 w-4 animate-spin text-civic-indigo" /> Thinking through the next steps…</div>}
+              <div ref={chatEndRef} />
             </div>
-            {m.role === "user" && <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 mt-0.5"><User className="w-4 h-4" /></div>}
-          </div>
-        ))}
-        {loading && <div className="flex items-center gap-2 text-xs text-slate-500 pl-9"><Sparkles className="w-4 h-4 animate-spin text-indigo-600" /> Analyzing jurisdiction & portal rules...</div>}
-        <div ref={chatEndRef} />
+            <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-900">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+              <span>General information only—not legal advice. Don’t include passwords, Aadhaar, bank details, or private documents.</span>
+            </div>
+          </section>
+        )}
+        <form onSubmit={(event) => { event.preventDefault(); handleSendMessage(); }} className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+          <button type="button" aria-label={isOpen ? "Close chat" : "Open chat"} aria-expanded={isOpen} onClick={() => setIsOpen((open) => !open)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-civic-indigo hover:bg-indigo-100">
+            <Bot className="h-5 w-5" />
+          </button>
+          <input id="chat-input" aria-label="Ask NyayaSetu a question" type="text" value={input} onFocus={() => setIsOpen(true)} onChange={(event) => setInput(event.target.value)} placeholder="Ask a question…" className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm outline-none placeholder:text-slate-400" />
+          <button type="submit" disabled={loading || !input.trim()} aria-label="Send question" className="flex h-11 shrink-0 items-center gap-2 rounded-xl bg-civic-indigo px-4 text-sm font-semibold text-white shadow-xs hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50">
+            <Search className="h-4 w-4" /><span className="hidden sm:inline">Ask</span>
+          </button>
+        </form>
       </div>
-      <div className="bg-amber-50 border-t border-amber-200 px-3 py-1.5 flex items-center gap-1.5 text-[11px] text-amber-800"><AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" /><span>Procedural navigation tool only — not formal legal advice. Verify details on official .gov.in portals.</span></div>
-      <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="p-3 bg-white border-t border-slate-200 flex gap-2">
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Describe your issue in ${selectedState}...`} className="flex-1 text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        <button type="submit" disabled={loading || !input.trim()} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3.5 py-2 rounded-xl flex items-center justify-center transition cursor-pointer"><Send className="w-4 h-4" /></button>
-      </form>
     </div>
   );
 };

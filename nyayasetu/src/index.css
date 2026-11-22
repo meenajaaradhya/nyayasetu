@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-serif: "Newsreader", Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-civic-navy: #0f172a;
+  --color-civic-indigo: #4338ca;
+  --color-civic-paper: #f8fafc;
+  --color-civic-gold: #b45309;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-civic-paper);
+    color: #1e293b;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
