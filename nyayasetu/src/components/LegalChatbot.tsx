@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Bot, ExternalLink, FileText, Send, Sparkles, User } from "lucide-react";
 import { CIVIL_CATEGORIES } from "../data/civilData";
 import type { CivilCategory } from "../data/civilData";
@@ -6,27 +6,20 @@ import type { CivilCategory } from "../data/civilData";
 interface Message { id: string; role: "user" | "assistant"; text: string; matchedCategory?: CivilCategory; draftText?: string; }
 interface LegalChatbotProps { selectedState: string; activeCategory: CivilCategory; onSelectCategory: (cat: CivilCategory) => void; externalPrompt: string | null; onClearExternalPrompt: () => void; }
 
-export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSelectCategory, externalPrompt, onClearExternalPrompt }) => {
-  const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "assistant", text: `Namaste! Describe your civil dispute in plain language (e.g., "My landlord in ${selectedState} is holding my ₹80,000 deposit" or "Online store refused refund for a broken phone"). I will identify the right law, link the exact government portal, and draft your complaint summary.` }]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+const classifyLocally = (query: string): CivilCategory => {
+  const q = query.toLowerCase();
+  if (q.includes("rent") || q.includes("deposit") || q.includes("landlord") || q.includes("tenant") || q.includes("evict")) return CIVIL_CATEGORIES.find((c) => c.id === "rental")!;
+  if (q.includes("builder") || q.includes("rera") || q.includes("flat") || q.includes("possession") || q.includes("apartment")) return CIVIL_CATEGORIES.find((c) => c.id === "realestate")!;
+  if (q.includes("salary") || q.includes("hr") || q.includes("employer") || q.includes("job") || q.includes("terminat") || q.includes("pf") || q.includes("wage")) return CIVIL_CATEGORIES.find((c) => c.id === "workplace")!;
+  if (q.includes("invoice") || q.includes("contract") || q.includes("cheque") || q.includes("loan") || q.includes("client") || q.includes("payment")) return CIVIL_CATEGORIES.find((c) => c.id === "contracts")!;
+  if (q.includes("trademark") || q.includes("copyright") || q.includes("logo") || q.includes("patent") || q.includes("brand")) return CIVIL_CATEGORIES.find((c) => c.id === "ip")!;
+  if (q.includes("free lawyer") || q.includes("legal aid") || q.includes("lok adalat") || q.includes("mediat") || q.includes("afford")) return CIVIL_CATEGORIES.find((c) => c.id === "legalaid")!;
+  return CIVIL_CATEGORIES.find((c) => c.id === "consumer")!;
+};
 
-  const classifyLocally = (query: string): CivilCategory => {
-    const q = query.toLowerCase();
-    if (q.includes("rent") || q.includes("deposit") || q.includes("landlord") || q.includes("tenant") || q.includes("evict")) return CIVIL_CATEGORIES.find((c) => c.id === "rental")!;
-    if (q.includes("builder") || q.includes("rera") || q.includes("flat") || q.includes("possession") || q.includes("apartment")) return CIVIL_CATEGORIES.find((c) => c.id === "realestate")!;
-    if (q.includes("salary") || q.includes("hr") || q.includes("employer") || q.includes("job") || q.includes("terminat") || q.includes("pf") || q.includes("wage")) return CIVIL_CATEGORIES.find((c) => c.id === "workplace")!;
-    if (q.includes("invoice") || q.includes("contract") || q.includes("cheque") || q.includes("loan") || q.includes("client") || q.includes("payment")) return CIVIL_CATEGORIES.find((c) => c.id === "contracts")!;
-    if (q.includes("trademark") || q.includes("copyright") || q.includes("logo") || q.includes("patent") || q.includes("brand")) return CIVIL_CATEGORIES.find((c) => c.id === "ip")!;
-    if (q.includes("free lawyer") || q.includes("legal aid") || q.includes("lok adalat") || q.includes("mediat") || q.includes("afford")) return CIVIL_CATEGORIES.find((c) => c.id === "legalaid")!;
-    return CIVIL_CATEGORIES.find((c) => c.id === "consumer")!;
-  };
-
-  const generateDraftTemplate = (category: CivilCategory, userQuery: string, state: string) => {
-    const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    return `FORMAL PRE-FILING COMPLAINT / NOTICE SUMMARY
+const generateDraftTemplate = (category: CivilCategory, userQuery: string, state: string) => {
+  const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return `FORMAL PRE-FILING COMPLAINT / NOTICE SUMMARY
 Date: ${today}
 Jurisdiction / State: ${state}
 Applicable Law: ${category.bareAct}
@@ -46,9 +39,16 @@ Target Portal: ${category.nationalPortal.name} (${category.nationalPortal.url})
 
 4. ATTACHED EVIDENCE CHECKLIST:
 ${category.nationalPortal.documents.map((d) => `- [ ] ${d}`).join("\n")}`;
-  };
+};
 
-  const handleSendMessage = async (overrideText?: string) => {
+export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSelectCategory, externalPrompt, onClearExternalPrompt }) => {
+  const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "assistant", text: `Namaste! Describe your civil dispute in plain language (e.g., "My landlord in ${selectedState} is holding my ₹80,000 deposit" or "Online store refused refund for a broken phone"). I will identify the right law, link the exact government portal, and draft your complaint summary.` }]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const handleSendMessage = useCallback(async (overrideText?: string) => {
     const textToSend = (overrideText ?? input).trim();
     if (!textToSend) return;
     setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", text: textToSend }]);
@@ -61,29 +61,43 @@ ${category.nationalPortal.documents.map((d) => `- [ ] ${d}`).join("\n")}`;
     }
     const matched = classifyLocally(textToSend);
     onSelectCategory(matched);
-    const stateSpecific = matched.statePortals.find((s) => s.state === selectedState);
     const wantsDraft = lower.includes("draft") || lower.includes("notice") || lower.includes("complaint") || lower.includes("write");
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (apiKey) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: `You are NyayaSetu, an Indian Civil Law Navigation Assistant. User state: ${selectedState}. Matched Category: ${matched.title} (${matched.bareAct}). National Portal: ${matched.nationalPortal.name} (${matched.nationalPortal.url}). State Portal: ${stateSpecific ? `${stateSpecific.portalName} (${stateSpecific.url})` : "Use National Portal"}. User query: "${textToSend}". Provide a concise, empathetic, practical 3-step response: (1) Identify applicable law & portal, (2) State key jurisdiction/fee rule, (3) Draft a clean structured complaint/notice summary if requested. Keep it under 220 words.` }] }] }),
-        });
-        const data = await res.json();
-        const aiReply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (aiReply) {
-          setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: aiReply, matchedCategory: matched, draftText: wantsDraft ? generateDraftTemplate(matched, textToSend, selectedState) : undefined }]);
-          setLoading(false); return;
-        }
-      } catch { /* Use deterministic fallback. */ }
+    let geminiUnavailable = false;
+    try {
+      const response = await fetch("/.netlify/functions/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: textToSend, selectedState, categoryId: matched.id }),
+      });
+      if (!response.ok) throw new Error(`Gemini function returned HTTP ${response.status}`);
+      const data: unknown = await response.json();
+      const aiReply = data !== null && typeof data === "object" && "text" in data && typeof data.text === "string"
+        ? data.text
+        : undefined;
+      if (!aiReply) throw new Error("Gemini function returned no response text");
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: aiReply, matchedCategory: matched, draftText: wantsDraft ? generateDraftTemplate(matched, textToSend, selectedState) : undefined }]);
+      setLoading(false);
+      return;
+    } catch (error) {
+      console.error("Gemini request failed; using local guidance instead.", error);
+      geminiUnavailable = true;
     }
-    const replyText = `I've mapped your issue to **${matched.title}** under the **${matched.bareAct}** and switched your workspace tab.\n\n` + `• **Where to File:** ${stateSpecific ? `${stateSpecific.portalName} (${stateSpecific.note})` : matched.nationalPortal.name}\n` + `• **Jurisdiction & Fee:** ${matched.nationalPortal.jurisdictionAndFee}\n` + `• **Next Step:** Gather the ${matched.nationalPortal.documents.length} required PDFs shown in the checklist on the left before clicking Launch Portal.`;
+    const stateSpecific = matched.statePortals.find((s) => s.state === selectedState);
+    const replyText = `${geminiUnavailable ? "Gemini is unavailable; showing local guidance instead.\n\n" : ""}` +
+      `I've mapped your issue to **${matched.title}** under the **${matched.bareAct}** and switched your workspace tab.\n\n` +
+      `• **Where to File:** ${stateSpecific ? `${stateSpecific.portalName} (${stateSpecific.note})` : matched.nationalPortal.name}\n` +
+      `• **Jurisdiction & Fee:** ${matched.nationalPortal.jurisdictionAndFee}\n` +
+      `• **Next Step:** Gather the ${matched.nationalPortal.documents.length} required PDFs shown in the checklist on the left before clicking Launch Portal.`;
     setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: replyText, matchedCategory: matched, draftText: generateDraftTemplate(matched, textToSend, selectedState) }]);
     setLoading(false);
-  };
+  }, [input, onSelectCategory, selectedState]);
 
-  useEffect(() => { if (externalPrompt) { handleSendMessage(externalPrompt); onClearExternalPrompt(); } }, [externalPrompt]);
+  useEffect(() => {
+    if (externalPrompt) {
+      void handleSendMessage(externalPrompt);
+      onClearExternalPrompt();
+    }
+  }, [externalPrompt, handleSendMessage, onClearExternalPrompt]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8.5rem)] min-h-[520px] bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">

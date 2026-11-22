@@ -20,7 +20,7 @@ Open the URL displayed by Vite, normally `http://localhost:5173/`.
 
 ## Optional Gemini Integration
 
-Copy `.env.example` to `.env` and set `VITE_GEMINI_API_KEY`. Without a key or when the API fails, the local intelligent routing and notice-drafting engine remains available.
+In Netlify, add `GEMINI_API_KEY` under **Site configuration → Environment variables**. The Netlify Function reads this server-side key; do not use a `VITE_` prefix or commit the secret. Without a configured key or if Gemini is unavailable, the local routing and notice-drafting fallback remains available.
 
 ## Production Build
 
