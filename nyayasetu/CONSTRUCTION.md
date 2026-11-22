@@ -24,7 +24,9 @@ Open the URL displayed by Vite, normally `http://localhost:5173/`.
 
 ## Practical guidance and updates
 
-The topic pages prioritize low-friction next steps, evidence to preserve, and trusted support resources rather than filing instructions. The Explore carousel opens plain-language guidance, live Gazette and news searches for each listed Act, and public Reddit, X, and indexed Instagram searches. Community posts and news are discovery aids only; verify legal changes against official sources. Social content is linked out to its platform and is not scraped or presented as legal authority.
+The topic pages prioritize low-friction next steps, evidence to preserve, and trusted support resources rather than filing instructions. Legal categories remain visible as tabs. Only the single-card services carousel advances in order; its previous/next controls select services, and automatic movement changes only the preview card. The main page changes when a topic tab or service card is selected.
+
+The Latest News screen loads recent English-language India headlines about laws, court decisions, bills, and legal developments through the Netlify `legal-news` function and GDELT. It links to each publisher, caches the feed for 15 minutes, and does not copy full articles or summaries. Netlify functions run on the deployed site or through Netlify Dev; plain Vite `npm run dev` does not execute them, so use the live-search fallback locally. Headlines are discovery aids only; verify legal changes against the Gazette, Parliament, India Code, or court orders. Live Gazette/news searches for each listed Act and public Reddit, X, and indexed Instagram searches are also available. Social content is linked out and is not scraped or presented as legal authority.
 
 ## Records and account preview
 

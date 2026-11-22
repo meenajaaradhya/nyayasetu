@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   ArrowDown,
@@ -24,9 +24,33 @@ import { LegalChatbot } from "./components/LegalChatbot";
 
 type ExploreService = "know" | "updates" | "news" | "community" | "records" | "settings";
 type NavigationItem =
-  | { kind: "category"; id: string; title: string }
-  | { kind: "service"; id: ExploreService; title: string; description: string }
-  | { kind: "login"; id: "login"; title: string };
+  | { kind: "category"; id: string; title: string; description: string }
+  | { kind: "service"; id: ExploreService; title: string; description: string };
+
+interface LegalNewsArticle {
+  url: string;
+  title: string;
+  source: string;
+  indexedAt: string;
+}
+
+function isLegalNewsArticle(value: unknown): value is LegalNewsArticle {
+  if (typeof value !== "object" || value === null) return false;
+  const article = value as Record<string, unknown>;
+  if (typeof article.url !== "string" || typeof article.title !== "string"
+    || typeof article.source !== "string" || typeof article.indexedAt !== "string") return false;
+  try {
+    return new URL(article.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function formatIndexedDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
 
 interface SavedRecord {
   id: string;
@@ -97,8 +121,10 @@ export function App() {
   const [newCategoryId, setNewCategoryId] = useState(CIVIL_CATEGORIES[0].id);
   const [newDate, setNewDate] = useState("");
   const [newNotes, setNewNotes] = useState("");
-  const navigationRef = useRef<HTMLDivElement>(null);
-
+  const [serviceCarouselIndex, setServiceCarouselIndex] = useState(0);
+  const [newsArticles, setNewsArticles] = useState<LegalNewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
   const activeCategory: CivilCategory =
     CIVIL_CATEGORIES.find((category) => category.id === activeTabId) || CIVIL_CATEGORIES[0];
   const guide = PRACTICAL_GUIDES[activeCategory.id];
@@ -106,16 +132,46 @@ export function App() {
   const topic = `${activeCategory.title} ${activeCategory.bareAct} ${selectedState} India`;
   const encodedTopic = encodeURIComponent(topic);
   const newsUrl = `https://news.google.com/search?q=${encodedTopic}&hl=en-IN&gl=IN&ceid=IN:en`;
+  const currentAffairsNewsUrl = `https://news.google.com/search?q=${encodeURIComponent("India law changes court decisions legal current affairs")}&hl=en-IN&gl=IN&ceid=IN:en`;
   const redditUrl = `https://www.reddit.com/search/?q=${encodedTopic}`;
   const xUrl = `https://x.com/search?q=${encodedTopic}`;
   const instagramUrl = `https://www.google.com/search?q=${encodeURIComponent(`site:instagram.com ${topic}`)}`;
   const acts = activeCategory.bareAct.split(" & ");
 
-  const navigationItems: NavigationItem[] = [
-    ...CIVIL_CATEGORIES.map((category) => ({ kind: "category" as const, id: category.id, title: category.shortTitle })),
-    ...SERVICES.map((service) => ({ kind: "service" as const, ...service })),
-    { kind: "login", id: "login", title: "Sign in" },
-  ];
+  const currentCarouselItem: NavigationItem = {
+    kind: "service",
+    ...(SERVICES[serviceCarouselIndex] ?? SERVICES[0]),
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setServiceCarouselIndex((index) => (index + 1) % SERVICES.length);
+    }, 6000);
+    return () => window.clearTimeout(timer);
+  }, [serviceCarouselIndex]);
+
+  useEffect(() => {
+    if (activeView !== "news") return undefined;
+    const controller = new AbortController();
+    void fetch("/.netlify/functions/legal-news", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`News feed returned HTTP ${response.status}`);
+        const payload: unknown = await response.json();
+        if (typeof payload !== "object" || payload === null || !("articles" in payload) || !Array.isArray(payload.articles)) {
+          throw new Error("News feed response had an unexpected format");
+        }
+        setNewsArticles(payload.articles.filter(isLegalNewsArticle));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Could not load current legal news.", error);
+        setNewsError("Current articles could not be loaded right now. You can still browse recent coverage from the news search.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setNewsLoading(false);
+      });
+    return () => controller.abort();
+  }, [activeView]);
 
   const persistRecords = (records: SavedRecord[]) => {
     try {
@@ -171,21 +227,32 @@ export function App() {
       setActiveTabId(item.id);
       setActiveView("topic");
     } else if (item.kind === "service") {
+      if (item.id === "news" && activeView !== "news") {
+        setNewsLoading(true);
+        setNewsError(null);
+      }
       setActiveView(item.id);
-    } else {
-      setShowLoginInfo(true);
     }
   };
 
   const IconForNavigation = (item: NavigationItem) => {
     if (item.kind === "category") return <Scale className="h-5 w-5" />;
-    if (item.kind === "login") return <LogIn className="h-5 w-5" />;
     if (item.id === "know") return <BookOpenText className="h-5 w-5" />;
     if (item.id === "updates") return <Scale className="h-5 w-5" />;
     if (item.id === "news") return <Newspaper className="h-5 w-5" />;
     if (item.id === "community") return <MessageCircle className="h-5 w-5" />;
     if (item.id === "records") return <FolderOpen className="h-5 w-5" />;
     return <Settings className="h-5 w-5" />;
+  };
+
+  const moveCarousel = (step: number) => {
+    const nextIndex = (serviceCarouselIndex + step + SERVICES.length) % SERVICES.length;
+    setServiceCarouselIndex(nextIndex);
+    showScreen({ kind: "service", ...SERVICES[nextIndex] });
+  };
+
+  const selectCarouselItem = () => {
+    showScreen(currentCarouselItem);
   };
 
   return (
@@ -210,33 +277,54 @@ export function App() {
           </div>
         </div>
 
-        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-4">
-          <button type="button" aria-label="Scroll services left" onClick={() => navigationRef.current?.scrollBy({ left: -300, behavior: "smooth" })} className="hidden shrink-0 rounded-full border border-slate-200 bg-white p-2 hover:bg-slate-50 sm:block">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <nav ref={navigationRef} aria-label="Topics and services" className="flex snap-x gap-3 overflow-x-auto scroll-smooth pb-1">
-            {navigationItems.map((item) => {
-              const isActive = item.kind === "category"
-                ? activeView === "topic" && item.id === activeCategory.id
-                : item.kind === "service" && activeView === item.id;
+        <div className="mx-auto max-w-6xl px-4 pb-3">
+          <nav aria-label="Legal topic tabs" className="flex snap-x gap-2 overflow-x-auto py-1 sm:flex-wrap sm:overflow-visible">
+            {CIVIL_CATEGORIES.map((category) => {
+              const isActive = activeTabId === category.id;
               return (
                 <button
                   type="button"
-                  key={item.id}
-                  onClick={() => showScreen(item)}
+                  key={category.id}
+                  onClick={() => {
+                    setActiveTabId(category.id);
+                    setActiveView("topic");
+                  }}
                   aria-pressed={isActive}
-                  className={`min-w-[136px] snap-start rounded-2xl border px-3 py-3 text-left transition sm:min-w-[156px] ${isActive ? "border-civic-indigo bg-civic-indigo text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50"}`}
+                  className={`shrink-0 snap-start rounded-xl border px-3 py-2 text-sm font-semibold transition ${isActive ? "border-civic-indigo bg-civic-indigo text-white" : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50"}`}
                 >
-                  <span className={`mb-2 inline-flex rounded-lg p-1.5 ${isActive ? "bg-white/15 text-white" : "bg-slate-100 text-civic-indigo"}`}>{IconForNavigation(item)}</span>
-                  <span className="block whitespace-nowrap text-sm font-semibold">{item.title}</span>
-                  {item.kind === "service" && <span className={`mt-1 block text-[11px] leading-4 ${isActive ? "text-indigo-100" : "text-slate-500"}`}>{item.description}</span>}
+                  {category.shortTitle}
                 </button>
               );
             })}
           </nav>
-          <button type="button" aria-label="Scroll services right" onClick={() => navigationRef.current?.scrollBy({ left: 300, behavior: "smooth" })} className="hidden shrink-0 rounded-full border border-slate-200 bg-white p-2 hover:bg-slate-50 sm:block">
-            <ArrowRight className="h-4 w-4" />
-          </button>
+        </div>
+        <div className="border-t border-slate-100 bg-slate-50/70">
+          <div className="mx-auto max-w-6xl px-4 py-3">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Explore services</p>
+            <div className="flex items-center gap-2">
+              <button type="button" aria-label="Previous service" onClick={() => moveCarousel(-1)} className="shrink-0 rounded-full border border-slate-200 bg-white p-2.5 text-slate-700 hover:border-civic-indigo hover:text-civic-indigo">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <nav aria-label="Services carousel" aria-roledescription="carousel" className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={selectCarouselItem}
+                  aria-pressed={activeView === currentCarouselItem.id}
+                  className="flex min-h-[92px] w-full items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-3 text-left shadow-sm transition hover:border-civic-indigo sm:gap-4 sm:px-5"
+                >
+                  <span className="inline-flex shrink-0 rounded-xl bg-white/80 p-2.5 text-civic-indigo">{IconForNavigation(currentCarouselItem)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-slate-900">{currentCarouselItem.title}</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600 sm:text-sm">{currentCarouselItem.description}</span>
+                  </span>
+                  <span className="hidden shrink-0 text-xs tabular-nums text-slate-500 sm:block">{serviceCarouselIndex + 1} / {SERVICES.length}</span>
+                </button>
+              </nav>
+              <button type="button" aria-label="Next service" onClick={() => moveCarousel(1)} className="shrink-0 rounded-full border border-slate-200 bg-white p-2.5 text-slate-700 hover:border-civic-indigo hover:text-civic-indigo">
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -264,8 +352,10 @@ export function App() {
 
             <section className="grid gap-4 lg:grid-cols-3">
               <article className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-civic-indigo">A good place to start</p>
-                <h2 className="mt-1 font-serif text-2xl font-bold tracking-tight text-slate-900">Your next steps</h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-civic-indigo">How the app helps</p>
+                <h2 className="mt-1 font-serif text-2xl font-bold tracking-tight text-slate-900">Understand your options</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">NyayaSetu explains the issue in plain language, suggests practical first actions, and points you to trusted support—without pushing you straight into filing.</p>
+                <h3 className="mt-5 text-sm font-semibold text-slate-800">For this issue</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{guide.summary}</p>
                 <ol className="mt-5 space-y-4">
                   {guide.firstSteps.map((step, index) => (
@@ -344,9 +434,35 @@ export function App() {
         {activeView === "news" && (
           <section className="py-8">
             <p className="text-xs font-bold uppercase tracking-wider text-civic-indigo">Latest coverage</p>
-            <h1 className="mt-1 font-serif text-3xl font-bold">News about {activeCategory.shortTitle.toLowerCase()}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Browse current articles for {selectedState}. Check the date and source, and verify legal claims against official information.</p>
-            <a className="mt-5 inline-flex items-center gap-2 rounded-xl bg-civic-indigo px-4 py-3 text-sm font-semibold text-white shadow-xs hover:bg-indigo-800" href={newsUrl} target="_blank" rel="noopener noreferrer">Browse latest articles <ArrowUpRight className="h-4 w-4" /></a>
+            <h1 className="mt-1 font-serif text-3xl font-bold">Current affairs & law changes</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Recent India headlines about laws, court decisions, bills, and legal developments, collected from news publishers. Headlines link to the original publisher; news coverage is not the law.</p>
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-serif text-xl font-bold text-slate-900">Recent articles</h2>
+                <span className="text-xs text-slate-500">GDELT news discovery feed · refreshed periodically</span>
+              </div>
+              {newsLoading && <p role="status" className="py-5 text-sm text-slate-600">Loading recent articles…</p>}
+              {!newsLoading && newsArticles.length === 0 && !newsError && <p className="py-5 text-sm text-slate-600">No recent articles are available right now. Try the live search below.</p>}
+              {newsError && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">{newsError}</p>}
+              {newsArticles.length > 0 && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {newsArticles.map((article) => (
+                    <article key={article.url} className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-xs font-semibold text-slate-500">{article.source} · Indexed {formatIndexedDate(article.indexedAt)}</p>
+                      <h3 className="mt-2 font-semibold leading-6 text-slate-900">{article.title}</h3>
+                      <a className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-civic-indigo hover:text-indigo-900" href={article.url} target="_blank" rel="noopener noreferrer">
+                        Read at publisher <ArrowUpRight className="h-4 w-4" />
+                      </a>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="mt-4 max-w-3xl text-xs leading-5 text-slate-500">Use an article as a starting point only. Confirm any proposed or reported legal change with the Gazette of India, Parliament, India Code, or the relevant court order.</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a className="inline-flex items-center gap-2 rounded-xl bg-civic-indigo px-4 py-3 text-sm font-semibold text-white shadow-xs hover:bg-indigo-800" href={currentAffairsNewsUrl} target="_blank" rel="noopener noreferrer">Search current India legal news <ArrowUpRight className="h-4 w-4" /></a>
+              <a className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold hover:border-indigo-300 hover:bg-indigo-50" href={newsUrl} target="_blank" rel="noopener noreferrer">Search {activeCategory.shortTitle} news <ArrowUpRight className="h-4 w-4" /></a>
+            </div>
           </section>
         )}
 
