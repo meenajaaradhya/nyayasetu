@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Bot, ExternalLink, FileText, Send, Sparkles, User } from "lucide-react";
 import { CIVIL_CATEGORIES } from "../data/civilData";
+import { PRACTICAL_GUIDES } from "../data/practicalGuides";
 import type { CivilCategory } from "../data/civilData";
 
 interface Message { id: string; role: "user" | "assistant"; text: string; matchedCategory?: CivilCategory; draftText?: string; }
-interface LegalChatbotProps { selectedState: string; activeCategory: CivilCategory; onSelectCategory: (cat: CivilCategory) => void; externalPrompt: string | null; onClearExternalPrompt: () => void; }
+interface LegalChatbotProps { selectedState: string; onSelectCategory: (cat: CivilCategory) => void; }
 
 const classifyLocally = (query: string): CivilCategory => {
   const q = query.toLowerCase();
@@ -17,32 +18,33 @@ const classifyLocally = (query: string): CivilCategory => {
   return CIVIL_CATEGORIES.find((c) => c.id === "consumer")!;
 };
 
-const generateDraftTemplate = (category: CivilCategory, userQuery: string, state: string) => {
+const generateFirstContactTemplate = (category: CivilCategory, userQuery: string, state: string) => {
   const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  return `FORMAL PRE-FILING COMPLAINT / NOTICE SUMMARY
+  return `INITIAL WRITTEN REQUEST — REVIEW BEFORE SENDING
 Date: ${today}
-Jurisdiction / State: ${state}
-Applicable Law: ${category.bareAct}
-Target Portal: ${category.nationalPortal.name} (${category.nationalPortal.url})
+State: ${state}
+Topic: ${category.title}
 
-1. FACTUAL SUMMARY OF DISPUTE:
+To: [Name / customer support / HR / other contact]
+Subject: Request to resolve [brief issue]
+
+Hello,
+
+I am contacting you about the following issue:
 "${userQuery}"
 
-2. PROCEDURAL CHRONOLOGY (FILL DATES BEFORE UPLOAD):
-- Date of Transaction / Agreement: [DD/MM/YYYY]
-- Date Cause of Action Arose: [DD/MM/YYYY]
-- Date of Written Grievance to Opposite Party: [DD/MM/YYYY]
+Relevant dates or reference numbers: [Add only what is needed]
+What I am requesting: [State the practical outcome you want]
+Please let me know the next steps and expected response timeline.
 
-3. RELIEF SOUGHT:
-- Principal Refund / Claim Amount: ₹[Enter Amount]
-- Compensation for Harassment / Delay & Litigation Costs: ₹[Enter Amount]
+I can provide relevant supporting records through a secure channel if needed.
 
-4. ATTACHED EVIDENCE CHECKLIST:
-${category.nationalPortal.documents.map((d) => `- [ ] ${d}`).join("\n")}`;
+Thank you,
+[Your name]`;
 };
 
-export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSelectCategory, externalPrompt, onClearExternalPrompt }) => {
-  const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "assistant", text: `Namaste! Describe your civil dispute in plain language (e.g., "My landlord in ${selectedState} is holding my ₹80,000 deposit" or "Online store refused refund for a broken phone"). I will identify the right law, link the exact government portal, and draft your complaint summary.` }]);
+export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSelectCategory }) => {
+  const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "assistant", text: `Namaste! Describe what happened in ${selectedState}. I can help organize practical next steps, records to keep, and questions to ask. Avoid sharing identifying or financial details.` }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -75,35 +77,27 @@ export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSel
         ? data.text
         : undefined;
       if (!aiReply) throw new Error("Gemini function returned no response text");
-      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: aiReply, matchedCategory: matched, draftText: wantsDraft ? generateDraftTemplate(matched, textToSend, selectedState) : undefined }]);
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: aiReply, matchedCategory: matched, draftText: wantsDraft ? generateFirstContactTemplate(matched, textToSend, selectedState) : undefined }]);
       setLoading(false);
       return;
     } catch (error) {
       console.error("Gemini request failed; using local guidance instead.", error);
       geminiUnavailable = true;
     }
-    const stateSpecific = matched.statePortals.find((s) => s.state === selectedState);
+    const guide = PRACTICAL_GUIDES[matched.id];
     const replyText = `${geminiUnavailable ? "Gemini is unavailable; showing local guidance instead.\n\n" : ""}` +
-      `I've mapped your issue to **${matched.title}** under the **${matched.bareAct}** and switched your workspace tab.\n\n` +
-      `• **Where to File:** ${stateSpecific ? `${stateSpecific.portalName} (${stateSpecific.note})` : matched.nationalPortal.name}\n` +
-      `• **Jurisdiction & Fee:** ${matched.nationalPortal.jurisdictionAndFee}\n` +
-      `• **Next Step:** Gather the ${matched.nationalPortal.documents.length} required PDFs shown in the checklist on the left before clicking Launch Portal.`;
-    setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: replyText, matchedCategory: matched, draftText: generateDraftTemplate(matched, textToSend, selectedState) }]);
+      `This sounds like **${matched.title}**. You’re now viewing practical guidance for that topic.\n\n` +
+      guide.firstSteps.slice(0, 3).map((step, index) => `${index + 1}. ${step}`).join("\n\n") +
+      `\n\nOfficial starting point: ${guide.supportLabel}.`;
+    setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", text: replyText, matchedCategory: matched, draftText: wantsDraft ? generateFirstContactTemplate(matched, textToSend, selectedState) : undefined }]);
     setLoading(false);
   }, [input, onSelectCategory, selectedState]);
 
-  useEffect(() => {
-    if (externalPrompt) {
-      void handleSendMessage(externalPrompt);
-      onClearExternalPrompt();
-    }
-  }, [externalPrompt, handleSendMessage, onClearExternalPrompt]);
-
   return (
-    <div className="flex flex-col h-[calc(100vh-8.5rem)] min-h-[520px] bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="flex h-[min(70vh,620px)] min-h-[480px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5"><div className="p-1.5 bg-indigo-500 rounded-lg"><Bot className="w-5 h-5 text-white" /></div><div><h3 className="font-semibold text-sm leading-tight">NyayaSetu AI Triage</h3><p className="text-xs text-slate-300">Auto-routes to National & {selectedState} Portals</p></div></div>
-        <span className="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">Live Router</span>
+        <div className="flex items-center gap-2.5"><div className="p-1.5 bg-indigo-500 rounded-lg"><Bot className="w-5 h-5 text-white" /></div><div><h3 className="font-semibold text-sm leading-tight">NyayaSetu Practical Guide</h3><p className="text-xs text-slate-300">Options and next steps for {selectedState}</p></div></div>
+        <span className="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">Guidance</span>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
         {messages.map((m) => (
@@ -111,8 +105,8 @@ export const LegalChatbot: React.FC<LegalChatbotProps> = ({ selectedState, onSel
             {m.role === "assistant" && <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5"><Bot className="w-4 h-4" /></div>}
             <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-indigo-600 text-white rounded-br-none" : "bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs"}`}>
               <div className="whitespace-pre-line">{m.text}</div>
-              {m.matchedCategory && <div className="mt-3 pt-2.5 border-t border-slate-100"><a href={m.matchedCategory.nationalPortal.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition">Open {m.matchedCategory.nationalPortal.name.split("(")[0]} <ExternalLink className="w-3.5 h-3.5" /></a></div>}
-              {m.draftText && <details className="mt-2.5 bg-slate-900 text-slate-100 rounded-xl p-2.5 text-xs"><summary className="cursor-pointer font-medium text-indigo-300 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> View Ready-to-Copy Filing Draft</summary><pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-slate-200 overflow-x-auto">{m.draftText}</pre></details>}
+              {m.matchedCategory && <div className="mt-3 pt-2.5 border-t border-slate-100"><a href={PRACTICAL_GUIDES[m.matchedCategory.id].supportUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition">Open {PRACTICAL_GUIDES[m.matchedCategory.id].supportLabel} <ExternalLink className="w-3.5 h-3.5" /></a></div>}
+              {m.draftText && <details className="mt-2.5 bg-slate-900 text-slate-100 rounded-xl p-2.5 text-xs"><summary className="cursor-pointer font-medium text-indigo-300 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> View initial message template</summary><pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-slate-200 overflow-x-auto">{m.draftText}</pre></details>}
             </div>
             {m.role === "user" && <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 mt-0.5"><User className="w-4 h-4" /></div>}
           </div>
